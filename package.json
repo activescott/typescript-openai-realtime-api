@@ -10,7 +10,7 @@
   "type": "module",
   "scripts": {
     "dev": "cd apps/react-example && npm run dev",
-    "build": "tsc --build",
+    "build": "npm run build --workspaces",
     "watch": "tsc --build --watch",
     "clean": "rm -rf node_modules && npm run clean --workspaces"
   },

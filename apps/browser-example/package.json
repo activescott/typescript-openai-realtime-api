@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "clean": "rm -rf node_modules",
+    "build": "rm -rf dist ; tsc -b && vite build",
+    "clean": "rm -rf node_modules; rm -rf dist",
     "preview": "vite preview"
   },
   "dependencies": {
