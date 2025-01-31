@@ -24,8 +24,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      # https://github.com/actions/configure-pages
-      - uses: actions/configure-pages@v2
       # https://github.com/actions/setup-node#usage
       - uses: actions/setup-node@v4
         with:
