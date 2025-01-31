@@ -19,8 +19,8 @@
     }
   },
   "scripts": {
-    "build": "tsc --build",
-    "clean": "rm -rf dist; rm -rf node_modules"
+    "build": "rm -rf dist; tsc --build",
+    "clean": "rm -rf dist; rm tsconfig.tsbuildinfo; rm -rf node_modules"
   },
   "keywords": [],
   "author": "Scott Willeke <scott@willeke.com> (https://scott.willeke.com)",

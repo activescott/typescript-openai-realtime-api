@@ -9,8 +9,8 @@
   ],
   "type": "module",
   "scripts": {
-    "dev": "cd apps/react-example && npm run dev",
-    "build": "npm run build --workspaces",
+    "dev": "cd apps/browser-example && npm run dev",
+    "build": "tsc --build",
     "watch": "tsc --build --watch",
     "clean": "rm -rf node_modules && npm run clean --workspaces"
   },
