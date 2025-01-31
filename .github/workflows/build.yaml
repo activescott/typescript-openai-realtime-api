@@ -37,7 +37,7 @@ jobs:
         with:
           path: "./apps/browser-example/dist/"
 
-  deploy:
+  pages:
     needs: build
     environment:
       name: github-pages
@@ -47,3 +47,13 @@ jobs:
       # https://github.com/actions/deploy-pages & https://github.com/actions/starter-workflows/blob/main/pages/static.yml
       - uses: actions/deploy-pages@v4
         id: deployment
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # TODO: NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npx semantic-release@24
