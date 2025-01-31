@@ -1,4 +1,4 @@
-# tsorta: TypeScript OpenAPI Realtime API
+# tsorta: TypeScript OpenAI Realtime API
 
 This repo is for an article I've written about how to use the OpenAI Realtime API with TypeScript + React and WebRTC.
 It is a working example that you can experience the Realtime API with yourself. The WebRTC client also does some heavy lifting around managing the conversation state and audio streams.
