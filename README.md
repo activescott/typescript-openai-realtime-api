@@ -7,7 +7,7 @@ This repo also has an example that demonstrates the [OpenAI Official SDK support
 
 This project also has a reusable package that you can use in your own projects in [packages/browser](packages/browser). I plan to publish this here soon for others. If you're interested in the package let me know and I'll get it pushed to npm!
 
-More at https://scott.willeke.com/2025-01-31-typescript-client-for-openai-realtime-api
+More at https://scott.willeke.com/ai-typescript-client-for-openai-realtime-api
 
 ## References
 
