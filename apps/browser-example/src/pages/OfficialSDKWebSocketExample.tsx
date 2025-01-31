@@ -76,6 +76,13 @@ export function OfficialSDKWebSocketExample({
   return (
     <div className="container">
       <h1>Official SDK WebSocket Example</h1>
+      <p>
+        This example demonstrates the Official OpenAI SDK's WebSocket client. It
+        does not go to the trouble of decoding the audio streams and hooking
+        them up to the browser. So you only see the data events. To experience
+        the streaming audio with a back-and-forth conversation, see the WebRTC
+        Example.
+      </p>
       <RealtimeSessionView
         startSession={startSession}
         stopSession={stopSession}

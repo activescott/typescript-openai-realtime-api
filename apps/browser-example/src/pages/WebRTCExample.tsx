@@ -42,6 +42,11 @@ export function WebRTCExample({
   return (
     <div className="container">
       <h1>WebRTC Example</h1>
+      <p>
+        This example demonstrates how to use the OpenAI Realtime API directly.
+        It is using the TypeScript client from the article
+        https://scott.willeke.com/ai-typescript-client-for-openai-realtime-api .
+      </p>
       <audio ref={audioElementRef}></audio>
       <RealtimeSessionView
         startSession={startSession}
