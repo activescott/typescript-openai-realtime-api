@@ -1,0 +1,23 @@
+{
+  "name": "@tsorta/solution",
+  "version": "1.0.0",
+  "private": "true",
+  "packageManager": "npm@10.2.4",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "cd apps/react-example && npm run dev",
+    "build": "tsc --build",
+    "watch": "tsc --build --watch",
+    "clean": "rm -rf node_modules && npm run clean --workspaces"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

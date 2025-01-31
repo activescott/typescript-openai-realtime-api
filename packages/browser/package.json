@@ -1,0 +1,37 @@
+{
+  "name": "@tsorta/browser",
+  "version": "1.0.0",
+  "description": "",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./WebRTC": {
+      "types": "./dist/WebRTC/index.d.ts",
+      "import": "./dist/WebRTC/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "rm -rf dist; rm -rf node_modules"
+  },
+  "keywords": [],
+  "author": "Scott Willeke <scott@willeke.com> (https://scott.willeke.com)",
+  "license": "MIT",
+  "devDependencies": {
+    "@tsconfig/node20": "^20.1.4",
+    "@types/events": "^3.0.3",
+    "type-fest": "^4.33.0",
+    "typed-emitter": "^2.1.0"
+  },
+  "dependencies": {
+    "events": "^3.3.0"
+  }
+}

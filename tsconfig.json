@@ -1,0 +1,11 @@
+{
+  // see https://www.typescriptlang.org/docs/handbook/project-references.html#overall-structure
+  "references": [
+    { "path": "packages/browser" },
+    { "path": "apps/browser-example" }
+  ],
+  "files": [],
+  "compilerOptions": {
+    "composite": true
+  }
+}
