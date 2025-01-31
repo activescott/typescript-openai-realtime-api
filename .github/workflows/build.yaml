@@ -14,13 +14,6 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # permissions on the GITHUB_TOKEN to allow deployment to GitHub Pages and for semantic-release
-    permissions:
-      contents: write # to be able to publish a GitHub release
-      issues: write # to be able to comment on released issues
-      pull-requests: write # to be able to comment on released pull requests
-      id-token: write # to enable use of OIDC for npm provenance and github pages publishing
-      pages: write # github pages publishing
 
     steps:
       - uses: actions/checkout@v4
@@ -39,10 +32,15 @@ jobs:
 
   pages:
     needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
     steps:
       # https://github.com/actions/deploy-pages & https://github.com/actions/starter-workflows/blob/main/pages/static.yml
       - uses: actions/deploy-pages@v4
@@ -51,6 +49,12 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    # permissions on the GITHUB_TOKEN to allow deployment to GitHub Pages and for semantic-release
+    permissions:
+      contents: write # to be able to publish a GitHub release
+      issues: write # to be able to comment on released issues
+      pull-requests: write # to be able to comment on released pull requests
+      id-token: write # to enable use of OIDC for npm provenance and github pages publishing
     steps:
       - env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
