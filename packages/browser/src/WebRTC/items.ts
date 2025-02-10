@@ -1,5 +1,5 @@
 import { Logger } from "../log"
-import {
+import type {
   RealtimeConversationItem,
   RealtimeConversationItemContent,
   RealtimeServerEventWithCompletedTranscript,

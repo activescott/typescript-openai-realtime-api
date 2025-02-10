@@ -1,4 +1,3 @@
-import { Simplify } from "type-fest"
 import type {
   RealtimeClientEventSessionUpdate,
   RealtimeConversationItem,
@@ -12,51 +11,50 @@ import type {
   RealtimeSession,
   RealtimeSessionCreateRequest,
 } from "../types/openai"
-import EventEmitter from "events"
-import type TypedEmitter from "typed-emitter"
 import {
   findConversationItem,
   findConversationItemContent,
   patchConversationItemWithCompletedTranscript,
 } from "./items"
+import { TypedEventTarget } from "typescript-event-target"
+import { secondsToMilliseconds } from "../duration"
+import {
+  RealtimeServerEventEvent,
+  SessionCreatedEvent,
+  SessionUpdatedEvent,
+  ConversationChangedEvent,
+  RecordedAudioChangedEvent,
+  EventTargetListener,
+  RealtimeClientEventMap,
+} from "./events"
 
 const log = console
 
-type RealtimeEventMap = Simplify<
-  {
-    // server events
-    event: (event: RealtimeServerEvent) => void
-    /**
-     * Emitted when the recorded audio changes.
-     */
-    recordedAudioChanged: () => void
-    /**
-     * Emitted when the session starts
-     */
-    sessionCreated: (session: RealtimeSession) => void
-    /**
-     * Emitted when the session is updated.
-     */
-    sessionUpdated: (session: RealtimeSession | undefined) => void
-    /**
-     * Emitted when the conversation
-     * @param event
-     * @returns
-     */
-    conversationChanged: (conversation: RealtimeConversationItem[]) => void
-  } & {
-    [EventType in RealtimeServerEvent["type"]]: (
-      event: Extract<RealtimeServerEvent, { type: EventType }>
-    ) => unknown
-  }
->
+interface RealtimeClientOptions {
+  /**
+   * The duration in milliseconds of each recorded audio chunk. This will also determine the frequency of the recordedAudioChanged event.
+   */
+  recordedAudioChunkDuration: number
+  /**
+   * The model to use for the Realtime API.
+   */
+  model: string
+  /**
+   * The base URL for the Realtime API.
+   */
+  baseUrl: string
+}
 
-// NOTE: this extends syntax from https://www.npmjs.com/package/typed-emitter
+const RealtimeClientDefaultOptions: RealtimeClientOptions = {
+  recordedAudioChunkDuration: secondsToMilliseconds(1),
+  model: "gpt-4o-realtime-preview-2024-12-17",
+  baseUrl: "https://api.openai.com/v1/realtime",
+}
 
 /**
  * A TypeScript client for the OpenAI Realtime API using WebRTC in the browser.
  */
-export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<RealtimeEventMap>) {
+export class RealtimeClient {
   private peerConnection: RTCPeerConnection | undefined = undefined
   private localMediaStream: MediaStream | undefined = undefined
   private dataChannel: RTCDataChannel | undefined = undefined
@@ -66,6 +64,12 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
   // Session as received from the server in create/update
   private session: RealtimeSession | undefined = undefined
 
+  // NOTE: We use EventTarget rather than EventEmitter because EventTarget is standardized in the Browser and has one in Node.js (https://nodejs.org/api/events.html#class-eventtarget). I'm also not extending EventTarget as I don't wan't to expose the full EventTarget (untyped) interface at this time. We may consider exposing it in the future
+  private emitter = new TypedEventTarget<RealtimeClientEventMap>()
+  private readonly recordedAudioChunkDuration: number
+  private readonly model: string
+  private readonly baseUrl: string
+
   /**
    * Create a new client.
    * @param getRealtimeEphemeralAPIKey This is a function that you should implement to return the Ephemeral OpenAI API key that is used to authenticate with the OpenAI Realtime API. It should be an ephemeral key as described at https://platform.openai.com/docs/guides/realtime-webrtc#creating-an-ephemeral-token. You will probably need to make a call to your server here to fetch the key.
@@ -73,13 +77,26 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
    */
   constructor(
     private readonly navigator: Navigator,
-    private readonly getRealtimeEphemeralAPIKey: () => string,
+    private readonly getRealtimeEphemeralAPIKey: () => Promise<string> | string,
     private readonly audioElement: HTMLAudioElement,
     private readonly sessionRequested: RealtimeSessionCreateRequest,
-    private readonly model = "gpt-4o-realtime-preview-2024-12-17",
-    private readonly baseUrl = "https://api.openai.com/v1/realtime"
+    options: Partial<RealtimeClientOptions> = RealtimeClientDefaultOptions
   ) {
-    super()
+    const opt = { ...RealtimeClientDefaultOptions, ...options }
+    this.recordedAudioChunkDuration = opt.recordedAudioChunkDuration
+    this.model = opt.model
+    this.baseUrl = opt.baseUrl
+  }
+
+  /**
+   * Adds an event listener for the specified event.
+   * NOTE: This is compatible with the DOM @see EventTarget.addEventListener method, but more strictly typed.
+   */
+  public addEventListener<TEventName extends keyof RealtimeClientEventMap>(
+    event: TEventName,
+    listener: EventTargetListener<RealtimeClientEventMap[TEventName]>
+  ): void {
+    this.emitter.addEventListener(event, listener)
   }
 
   async start(): Promise<void> {
@@ -88,33 +105,40 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
 
     // Create a peer connection
     try {
-      await this.initializePeerConnection()
-    } catch (err) {
-      log.error("Failed to initialize peer connection", err)
-      throw err
-    }
+      try {
+        await this.initializePeerConnection()
+      } catch (err) {
+        log.error("Failed to initialize peer connection", err)
+        throw err
+      }
 
-    // Initialize MediaRecorder
-    try {
-      this.initializeMediaRecorder()
-    } catch (err) {
-      log.error("Failed to initialize media recorder", err)
-      throw err
-    }
+      // Initialize MediaRecorder
+      try {
+        this.initializeMediaRecorder()
+      } catch (err) {
+        log.error("Failed to initialize media recorder", err)
+        throw err
+      }
 
-    // Create a data channel from a peer connection
-    try {
-      this.initializeDataChannel()
-    } catch (err) {
-      log.error("Failed to initialize data channel", err)
-      throw err
-    }
+      // Create a data channel from a peer connection
+      try {
+        this.initializeDataChannel()
+      } catch (err) {
+        log.error("Failed to initialize data channel", err)
+        throw err
+      }
 
-    // Start the session using the Session Description Protocol (SDP)
-    try {
-      await this.initializeSession()
+      // Start the session using the Session Description Protocol (SDP)
+      try {
+        await this.initializeSession()
+      } catch (err) {
+        log.error("Failed to initialize session", err)
+        throw err
+      }
     } catch (err) {
-      log.error("Failed to initialize session", err)
+      log.error("Failed to start RealtimeClient", err)
+      // call stop to cleanup anything partially initialized
+      await this.stop()
       throw err
     }
   }
@@ -124,7 +148,6 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
 
     // Set up to play remote audio from the model
     this.peerConnection.ontrack = (e) => {
-      log.debug("ontrack sending stream to audioElement", e)
       this.audioElement.srcObject = e.streams[0]
       this.audioElement.muted = false
       this.audioElement.autoplay = true
@@ -148,19 +171,32 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
     }
 
     this.mediaRecorder = new MediaRecorder(this.localMediaStream)
-    this.audioChunks = []
-    this.emit("recordedAudioChanged")
+    this.setRecordedAudio([])
 
-    this.mediaRecorder.ondataavailable = (event) => {
+    this.mediaRecorder.ondataavailable = async (event) => {
       if (event.data.size > 0) {
-        this.audioChunks.push(event.data)
-        this.emit("recordedAudioChanged")
+        this.addRecordedAudio(event.data)
       }
     }
 
     // Record in small chunks for better handling
-    const MILLISECONDS_PER_SECOND = 1000
-    this.mediaRecorder.start(MILLISECONDS_PER_SECOND * 10)
+    this.mediaRecorder.start(this.recordedAudioChunkDuration)
+  }
+
+  private addRecordedAudio(...audioChunks: Blob[]) {
+    this.audioChunks.push(...audioChunks)
+    this.emitter.dispatchTypedEvent(
+      "recordedAudioChanged",
+      new RecordedAudioChangedEvent(this.audioChunks)
+    )
+  }
+
+  private setRecordedAudio(audioChunks: Blob[]) {
+    this.audioChunks = audioChunks
+    this.emitter.dispatchTypedEvent(
+      "recordedAudioChanged",
+      new RecordedAudioChangedEvent(this.audioChunks)
+    )
   }
 
   private async initializeSession() {
@@ -172,7 +208,7 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
 
     let apiKey: string
     try {
-      apiKey = this.getRealtimeEphemeralAPIKey()
+      apiKey = await this.getRealtimeEphemeralAPIKey()
     } catch (err) {
       throw new Error("getRealtimeEphemeralAPIKey handler failed.", {
         cause: err,
@@ -193,8 +229,6 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
       sdp: await sdpResponse.text(),
     }
 
-    log.debug("calling setRemoteDescription with answer", answer)
-
     await this.peerConnection.setRemoteDescription(answer)
   }
 
@@ -212,6 +246,36 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
     )
   }
 
+  public async stop(): Promise<void> {
+    if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
+      this.mediaRecorder.stop()
+    }
+    if (this.localMediaStream) {
+      this.localMediaStream.getTracks().forEach((track) => track.stop())
+      this.localMediaStream = undefined
+    }
+    if (this.audioElement) {
+      // stop the existing audio element:
+      this.audioElement.muted = true
+      this.audioElement.srcObject = null
+    }
+    if (this.dataChannel) {
+      this.dataChannel.close()
+      this.dataChannel = undefined
+    }
+    if (this.peerConnection) {
+      this.peerConnection.close()
+      this.peerConnection = undefined
+    }
+    if (this.session) {
+      this.session = undefined
+      this.emitter.dispatchTypedEvent(
+        "sessionUpdated",
+        new SessionUpdatedEvent(this.session)
+      )
+    }
+  }
+
   /**
    * Internal handler for server events from OpenAI Realtime API.
    */
@@ -220,18 +284,14 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
 
     this.processServerEvent(parsedEvent)
 
-    // dispatch it to any listeners
-    // TODO: remove use of any
-    type TypedEvent = Extract<
-      RealtimeServerEvent,
-      { type: typeof parsedEvent.type }
-    >
-    this.emit(parsedEvent.type as TypedEvent["type"], parsedEvent as any)
-    this.emit("event", parsedEvent as any)
+    this.emitter.dispatchTypedEvent(
+      "serverEvent",
+      new RealtimeServerEventEvent(parsedEvent)
+    )
   }
 
   private processServerEvent(event: RealtimeServerEvent) {
-    const handler = RealtimeClient.ServerEventHandlers[event.type]
+    const handler = RealtimeClient.privateServerEventHandlers[event.type]
     if (handler) {
       handler(this, event)
     }
@@ -244,35 +304,35 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
     this.dataChannel.send(JSON.stringify(event))
   }
 
-  public async stop(): Promise<void> {
-    if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
-      this.mediaRecorder.stop()
+  /**
+   * Returns the current hydrated conversation accumulated from the server events received from the Realtime API.
+   */
+  public getConversation(): RealtimeConversationItem[] {
+    return this.conversation
+  }
+
+  /**
+   * Indicates if recorded audio is available via @see getRecordedAudio.
+   * @returns true if there is recorded audio available, false otherwise.
+   */
+  public hasRecordedAudioAvailable(): boolean {
+    return this.audioChunks.length > 0
+  }
+
+  /**
+   * Gets the recorded audio as a Blob.
+   * @returns Promise that resolves with the audio Blob or null if no audio was recorded
+   */
+  public async getRecordedAudio(): Promise<Blob | null> {
+    if (this.audioChunks.length === 0) {
+      return null
     }
-    if (this.localMediaStream) {
-      this.localMediaStream.getTracks().forEach((track) => track.stop())
-      this.localMediaStream = undefined
-    }
-    if (this.audioElement) {
-      // stop the existing audio element:
-      this.audioElement.srcObject = null
-      this.audioElement.muted = true
-    }
-    if (this.dataChannel) {
-      this.dataChannel.close()
-      this.dataChannel = undefined
-    }
-    if (this.peerConnection) {
-      this.peerConnection.close()
-      this.peerConnection = undefined
-    }
-    if (this.session) {
-      this.session = undefined
-      this.emit("sessionUpdated", this.session)
-    }
+    // TODO: is this always the correct type? don't we need to check the source stream?
+    return new Blob(this.audioChunks, { type: "audio/webm" })
   }
 
   // TODO: make these events provide typed events.
-  private static ServerEventHandlers: Partial<
+  private static privateServerEventHandlers: Partial<
     Record<RealtimeServerEvent["type"], RealtimeClientServerEventHandler>
   > = {
     "session.created": (client, event) => {
@@ -280,8 +340,10 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
       const sessionEvent = event as RealtimeServerEventSessionCreated
 
       client.session = sessionEvent.session
-      log.info("Session created:", sessionEvent.session)
-      client.emit("sessionCreated", sessionEvent.session)
+      client.emitter.dispatchTypedEvent(
+        "sessionCreated",
+        new SessionCreatedEvent(sessionEvent.session)
+      )
 
       if (!client.sessionRequested) {
         throw new Error("No session request")
@@ -319,15 +381,19 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
     "session.updated": (client, event) => {
       const sessionEvent = event as RealtimeServerEventSessionUpdated
       client.session = sessionEvent.session
-      log.debug("session.updated:", sessionEvent.session)
-      client.emit("sessionUpdated", sessionEvent.session)
+      client.emitter.dispatchTypedEvent(
+        "sessionUpdated",
+        new SessionUpdatedEvent(sessionEvent.session)
+      )
     },
     "conversation.item.created": (client, event) => {
       const conversationEvent =
         event as RealtimeServerEventConversationItemCreated
-      log.debug("Conversation Item Received:", conversationEvent.item)
       client.conversation.push(conversationEvent.item)
-      client.emit("conversationChanged", client.conversation)
+      client.emitter.dispatchTypedEvent(
+        "conversationChanged",
+        new ConversationChangedEvent(client.conversation)
+      )
     },
     "response.audio_transcript.delta": (client, event) => {
       const deltaEvent =
@@ -344,9 +410,6 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
         return
       }
       if (!foundContent) {
-        log.debug(
-          `${event.type} Patching in NEW content item for audio transcript`
-        )
         if (!foundItem.content) {
           foundItem.content = []
         }
@@ -361,14 +424,12 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
           )
           return
         }
-        log.debug(
-          `${event.type} Patching transcript into foundContent: transcript: %s, foundContent: %o`,
-          deltaEvent.delta,
-          foundContent
-        )
         foundContent.transcript += deltaEvent.delta
       }
-      client.emit("conversationChanged", client.conversation)
+      client.emitter.dispatchTypedEvent(
+        "conversationChanged",
+        new ConversationChangedEvent(client.conversation)
+      )
     },
     "response.text.delta": (client, event) => {
       log.error(
@@ -405,9 +466,11 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
         if (!conversationItem) {
           // TODO: findConversationItem already logged an error, we should probably pass in a value that tells it not to log
           // no existing item is there, for some reason maybe we missed it in the stream somehow? We'll just add it:
-          log.debug("response.done: Adding new conversation item:", output)
           client.conversation.push(output)
-          client.emit("conversationChanged", client.conversation)
+          client.emitter.dispatchTypedEvent(
+            "conversationChanged",
+            new ConversationChangedEvent(client.conversation)
+          )
           continue
         }
         // TODO: we probably need to handle this better. Probably we need to overwrite the existing item with this new one since it is now "done".
@@ -416,11 +479,13 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
           conversationItem.content = []
         }
         for (const outputItem of output.content) {
-          log.debug("Patching up conversation item:", conversationItem)
           conversationItem.content.push(outputItem)
         }
         // force update the conversation state:
-        client.emit("conversationChanged", client.conversation)
+        client.emitter.dispatchTypedEvent(
+          "conversationChanged",
+          new ConversationChangedEvent(client.conversation)
+        )
       }
     },
     "response.audio_transcript.done": (client, event) => {
@@ -429,7 +494,10 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
         client.conversation,
         event as RealtimeServerEventResponseAudioTranscriptDone
       )
-      client.emit("conversationChanged", client.conversation)
+      client.emitter.dispatchTypedEvent(
+        "conversationChanged",
+        new ConversationChangedEvent(client.conversation)
+      )
     },
     "conversation.item.input_audio_transcription.completed": (
       client,
@@ -440,7 +508,10 @@ export class RealtimeClient extends (EventEmitter as new () => TypedEmitter<Real
         client.conversation,
         event as RealtimeServerEventResponseAudioTranscriptDone
       )
-      client.emit("conversationChanged", client.conversation)
+      client.emitter.dispatchTypedEvent(
+        "conversationChanged",
+        new ConversationChangedEvent(client.conversation)
+      )
     },
   }
 }
