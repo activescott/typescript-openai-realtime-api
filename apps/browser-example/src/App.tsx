@@ -4,6 +4,7 @@ import { useKeyManager } from "./hooks/key"
 import { OfficialSDKWebSocketExample } from "./pages/OfficialSDKWebSocketExample"
 import { WebRTCExample } from "./pages/WebRTCExample"
 import { PageProps } from "./pages/props"
+import { RealtimeServerEventEvent } from "@tsorta/browser/WebRTC/events"
 
 export function App() {
   const [events, setEvents] = useState<any[]>([])
@@ -18,8 +19,9 @@ export function App() {
     }
   }, [key])
 
-  const onServerEvent = (event: any) =>
-    setEvents((events) => [...events, event])
+  const onServerEvent = (event: RealtimeServerEventEvent) => {
+    setEvents((events) => [...events, event.event])
+  }
 
   const [routes] = useState({
     WebRTC: {

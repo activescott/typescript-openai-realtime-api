@@ -42,6 +42,15 @@ type RealTimeServerEventKeys = Extract<
  */
 export type RealtimeServerEvent = components["schemas"][RealTimeServerEventKeys]
 
+export type RealtimeServerEventTypes = RealtimeServerEvent["type"]
+
+/**
+ * A map of the @see RealtimeServerEvent.type to the actual type of the event.
+ */
+export type RealtimeServerEventTypeMap = {
+  [K in RealtimeServerEventTypes]: Extract<RealtimeServerEvent, { type: K }>
+}
+
 export type RealtimeServerEventConversationItemCreated =
   components["schemas"]["RealtimeServerEventConversationItemCreated"]
 
