@@ -1,5 +1,8 @@
 import { ReactNode, useCallback, useRef, useState } from "react"
-import { RealtimeSessionView } from "../components/RealtimeSessionView"
+import {
+  RealtimeSessionView,
+  StartSessionOptions,
+} from "../components/RealtimeSessionView"
 import { RealtimeClient } from "@tsorta/browser/WebRTC"
 import { PageProps } from "./props"
 
@@ -7,15 +10,16 @@ export function WebRTCExample({
   apiKey,
   sessionStatus,
   onSessionStatusChanged,
-  events,
-  onServerEvent,
 }: PageProps): ReactNode {
   const audioElementRef = useRef<HTMLAudioElement>(null)
 
   const [client, setClient] = useState<RealtimeClient | undefined>(undefined)
+  const [events, setEvents] = useState<any[]>([])
 
   const startSession = useCallback(
-    async function startSession(): Promise<void> {
+    async function startSession({
+      sessionRequest,
+    }: StartSessionOptions): Promise<void> {
       if (!apiKey) {
         throw new Error("API key is required")
       }
@@ -23,22 +27,35 @@ export function WebRTCExample({
         throw new Error("Audio element not found")
       }
 
+      console.debug("Starting session with request", {
+        sessionRequest,
+      })
+
       const client = new RealtimeClient(
         navigator,
-        () => apiKey,
+        // @ts-expect-error TS6133: 'sessionRequested' is declared but its value is never read.
+        ({ sessionRequested }) => {
+          // NOTE: For the sake of the example, we're using a "real" OpenAI API
+          //   key rather than a Realtime API Session ephemeral key, as you
+          //   should do in a production app. So this sessionRequested argument
+          //   isn't useful in the example, but in a production app you can use
+          //   it to request a session with the these parameters.
+          return apiKey
+        },
         audioElementRef.current,
-        { model: "gpt-4o-realtime-preview-2024-12-17" }
+        sessionRequest
       )
       setClient(client)
 
       client.addEventListener("serverEvent", (event) => {
-        onServerEvent(event)
+        setEvents((events) => [...events, event])
       })
+
       await client.start()
 
       onSessionStatusChanged("recording")
     },
-    [apiKey, audioElementRef, onServerEvent, onSessionStatusChanged, navigator]
+    [apiKey, audioElementRef, onSessionStatusChanged, navigator]
   )
 
   const stopSession = useCallback(

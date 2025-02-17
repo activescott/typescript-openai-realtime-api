@@ -4,10 +4,8 @@ import { useKeyManager } from "./hooks/key"
 import { OfficialSDKWebSocketExample } from "./pages/OfficialSDKWebSocketExample"
 import { WebRTCExample } from "./pages/WebRTCExample"
 import { PageProps } from "./pages/props"
-import { RealtimeServerEventEvent } from "@tsorta/browser/WebRTC/events"
 
 export function App() {
-  const [events, setEvents] = useState<any[]>([])
   const { key, KeyModal, EnterKeyButton } = useKeyManager()
   const [sessionStatus, setSessionStatus] = useState<
     "unavailable" | "stopped" | "recording"
@@ -18,10 +16,6 @@ export function App() {
       setSessionStatus("stopped")
     }
   }, [key])
-
-  const onServerEvent = (event: RealtimeServerEventEvent) => {
-    setEvents((events) => [...events, event.event])
-  }
 
   const [routes] = useState({
     WebRTC: {
@@ -54,7 +48,6 @@ export function App() {
                     activeRoute={activeRoute}
                     label={route.label}
                     onNavigate={(route) => {
-                      setEvents([])
                       setActiveRoute(route)
                     }}
                   />
@@ -71,13 +64,8 @@ export function App() {
           apiKey: key,
           sessionStatus,
           onSessionStatusChanged: (status) => {
-            if (status === "recording") {
-              setEvents([])
-            }
             setSessionStatus(status)
           },
-          events,
-          onServerEvent,
         })}
       </main>
     </>

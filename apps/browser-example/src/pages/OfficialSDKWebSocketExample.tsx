@@ -1,68 +1,68 @@
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import { OpenAIRealtimeWebSocket } from "openai/beta/realtime/websocket"
 import OpenAI from "openai"
-import { RealtimeSessionView } from "../components/RealtimeSessionView"
+import {
+  RealtimeSessionView,
+  StartSessionOptions,
+} from "../components/RealtimeSessionView"
 import { PageProps } from "./props"
-
-const model = "gpt-4o-realtime-preview-2024-12-17"
 
 export function OfficialSDKWebSocketExample({
   apiKey,
   sessionStatus,
   onSessionStatusChanged,
-  events,
-  onServerEvent,
 }: PageProps) {
   const [client, setClient] = useState<OpenAIRealtimeWebSocket | undefined>(
     undefined
   )
+  const [events, setEvents] = useState<any[]>([])
 
-  async function startSession(): Promise<void> {
+  const startSession = useCallback(async function startSession({
+    sessionRequest,
+  }: StartSessionOptions): Promise<void> {
     const oaiClient = new OpenAI({ apiKey, dangerouslyAllowBrowser: true })
     const client = new OpenAIRealtimeWebSocket(
       {
-        model,
+        model: sessionRequest.model,
         dangerouslyAllowBrowser: true,
       },
       oaiClient
     )
     setClient(client)
 
-    // listen:
-    client.on("event", onServerEvent)
+    client.on("event", (event) => {
+      console.log("client.on event", event)
+      setEvents((events) => [...events, event])
+    })
 
     // kick things off when the socket opens:
     client.socket.addEventListener("open", () => {
       console.log("Connection opened!")
 
-      /*
-      // not strictly necessary
       client.send({
         type: "session.update",
         session: {
-          modalities: ["text"],
-          model: "gpt-4o-realtime-preview",
+          ...sessionRequest,
+          // NOTE: OpenAI's OpenAPI types have a bit of a mismatch here
+          modalities: sessionRequest.modalities as ("audio" | "text")[],
         },
-      })*/
+      })
 
       client.send({
         type: "conversation.item.create",
         item: {
           type: "message",
           role: "user",
-          content: [{ type: "input_text", text: "Say a couple paragraphs!" }],
+          content: [{ type: "input_text", text: "Tell me something!" }],
         },
       })
 
       client.send({ type: "response.create" })
     })
 
-    client.on("event", (event) => {
-      onServerEvent(event)
-    })
-
     onSessionStatusChanged("recording")
-  }
+  },
+  [])
 
   async function stopSession() {
     if (!client) {
