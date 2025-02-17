@@ -50,8 +50,8 @@ export function EventList({ events }: { events: any[] }) {
 
   return (
     <div className="card my-2">
-      <div className="card-header d-flex gap-2">
-        <div className="dropdown">
+      <div className="card-header">
+        <div className="buttons-in-card-header d-flex gap-2 align-items-center">
           <button
             type="button"
             className="btn btn-primary dropdown-toggle"
