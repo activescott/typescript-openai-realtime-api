@@ -3,6 +3,7 @@ import type {
   RealtimeConversationItem,
   RealtimeServerEvent,
   RealtimeServerEventConversationItemCreated,
+  RealtimeServerEventError,
   RealtimeServerEventResponseAudioTranscriptDelta,
   RealtimeServerEventResponseAudioTranscriptDone,
   RealtimeServerEventResponseDone,
@@ -10,7 +11,7 @@ import type {
   RealtimeServerEventSessionUpdated,
   RealtimeSession,
   RealtimeSessionCreateRequest,
-} from "../types/openai"
+} from "../openai"
 import {
   findConversationItem,
   findConversationItemContent,
@@ -27,6 +28,7 @@ import {
   EventTargetListener,
   RealtimeClientEventMap,
 } from "./events"
+import { isEqual } from "lodash-es"
 
 const log = console
 
@@ -121,18 +123,28 @@ export class RealtimeClient {
       }
 
       // Create a data channel from a peer connection
+      let dataChannelOpenedPromise: Promise<void>
       try {
-        this.initializeDataChannel()
+        //  this promise will resolve when the channel is open and it's safe to send client events. It must be opened by the server after we initialize the channel with the SDP
+        dataChannelOpenedPromise = this.initializeDataChannel()
       } catch (err) {
         log.error("Failed to initialize data channel", err)
         throw err
       }
 
-      // Start the session using the Session Description Protocol (SDP)
       try {
+        // Start the session using the Session Description Protocol (SDP)
         await this.initializeSession()
       } catch (err) {
         log.error("Failed to initialize session", err)
+        throw err
+      }
+
+      // await data channel open so that clientEvents can be sent before we continue or return
+      try {
+        await dataChannelOpenedPromise
+      } catch (err) {
+        log.error("Failed to await data channel open", err)
         throw err
       }
     } catch (err) {
@@ -153,7 +165,7 @@ export class RealtimeClient {
       this.audioElement.autoplay = true
     }
 
-    // Add local audio track for microphone input in the browser
+    // Add local audio track for microphone input in the browser:
     this.localMediaStream = await this.navigator.mediaDevices.getUserMedia({
       audio: {
         // see https://developer.mozilla.org/en-US/docs/Web/API/MediaTrackConstraints
@@ -232,18 +244,33 @@ export class RealtimeClient {
     await this.peerConnection.setRemoteDescription(answer)
   }
 
-  private initializeDataChannel() {
+  private async initializeDataChannel(): Promise<void> {
     if (!this.peerConnection) {
       throw new Error("No peer connection")
     }
 
-    this.dataChannel = this.peerConnection.createDataChannel("oai-events")
+    const dataChannel = this.peerConnection.createDataChannel("oai-events")
+
+    // we will let the caller resolve when the dataChannel is opened
+    const dataChannelOpenedPromise = new Promise<void>((resolve) => {
+      dataChannel.addEventListener("open", () => {
+        log.debug("Data channel open")
+        resolve()
+      })
+    })
+
+    this.dataChannel = dataChannel
 
     // Listen for server-sent events on the data channel
     this.dataChannel.addEventListener(
       "message",
       this.receiveServerMessage.bind(this)
     )
+    this.dataChannel.addEventListener("error", (e) => {
+      log.error("Data channel error from server: %o", e.error)
+    })
+
+    return dataChannelOpenedPromise
   }
 
   public async stop(): Promise<void> {
@@ -291,7 +318,9 @@ export class RealtimeClient {
   }
 
   private processServerEvent(event: RealtimeServerEvent) {
-    const handler = RealtimeClient.privateServerEventHandlers[event.type]
+    const handler = RealtimeClient.privateServerEventHandlers[
+      event.type
+    ] as RealtimeServerEventHandler<(typeof event)["type"]>
     if (handler) {
       handler(this, event)
     }
@@ -331,192 +360,228 @@ export class RealtimeClient {
     return new Blob(this.audioChunks, { type: "audio/webm" })
   }
 
-  // TODO: make these events provide typed events.
-  private static privateServerEventHandlers: Partial<
-    Record<RealtimeServerEvent["type"], RealtimeClientServerEventHandler>
-  > = {
-    "session.created": (client, event) => {
-      // when a conversation is created, set the conversation state:
-      const sessionEvent = event as RealtimeServerEventSessionCreated
+  // TODO: make these events provide typed events to each handler (should be able to use TS types to do that).
+  private static privateServerEventHandlers: Partial<RealtimeServerEventTypeToHandlerMap> =
+    {
+      error: (_, event) => {
+        const errorEvent = event as RealtimeServerEventError
+        log.error("Error event from server: %o", errorEvent)
+      },
+      "session.created": (client, event) => {
+        // when a conversation is created, set the conversation state:
+        const sessionEvent = event as RealtimeServerEventSessionCreated
 
-      client.session = sessionEvent.session
-      client.emitter.dispatchTypedEvent(
-        "sessionCreated",
-        new SessionCreatedEvent(sessionEvent.session)
-      )
-
-      if (!client.sessionRequested) {
-        throw new Error("No session request")
-      }
-
-      // NOTE: When we create a session with OpenAI, it ignores things like input_audio_transcription?.model !== "whisper-1"; So we update it again if it doesn't match the session.
-      let updatedSession: RealtimeSessionCreateRequest = {
-        ...client.sessionRequested,
-      }
-      let hasSessionMismatch = false
-
-      for (const key of Object.keys(client.sessionRequested) as Array<
-        keyof RealtimeSessionCreateRequest
-      >) {
-        const requestValue = client.sessionRequested[key]
-        const sessionValue = sessionEvent.session[key]
-        if (requestValue === sessionValue) {
-          delete updatedSession[key]
-          continue
-        }
-        hasSessionMismatch = true
-      }
-      if (hasSessionMismatch) {
-        log.warn(
-          "Updating mismatched session to match requested session: %o",
-          updatedSession
+        client.session = sessionEvent.session
+        client.emitter.dispatchTypedEvent(
+          "sessionCreated",
+          new SessionCreatedEvent(sessionEvent.session)
         )
-        const updateSessionEvent: RealtimeClientEventSessionUpdate = {
-          type: "session.update",
-          session: updatedSession,
-        }
-        client.sendClientEvent(updateSessionEvent)
-      }
-    },
-    "session.updated": (client, event) => {
-      const sessionEvent = event as RealtimeServerEventSessionUpdated
-      client.session = sessionEvent.session
-      client.emitter.dispatchTypedEvent(
-        "sessionUpdated",
-        new SessionUpdatedEvent(sessionEvent.session)
-      )
-    },
-    "conversation.item.created": (client, event) => {
-      const conversationEvent =
-        event as RealtimeServerEventConversationItemCreated
-      client.conversation.push(conversationEvent.item)
-      client.emitter.dispatchTypedEvent(
-        "conversationChanged",
-        new ConversationChangedEvent(client.conversation)
-      )
-    },
-    "response.audio_transcript.delta": (client, event) => {
-      const deltaEvent =
-        event as RealtimeServerEventResponseAudioTranscriptDelta
-      const { foundContent, foundItem } = findConversationItemContent(
-        { log },
-        client.conversation,
-        deltaEvent.item_id,
-        deltaEvent.content_index,
-        deltaEvent
-      )
-      if (!foundItem) {
-        // error was logged in findConversationItemContent
-        return
-      }
-      if (!foundContent) {
-        if (!foundItem.content) {
-          foundItem.content = []
-        }
-        foundItem.content.push({
-          type: "input_audio",
-          transcript: deltaEvent.delta,
-        })
-      } else {
-        if (foundContent.type !== "input_audio") {
-          log.error(
-            `${event.type} Unexpected content type ${foundContent.type} for audio transcript`
-          )
-          return
-        }
-        foundContent.transcript += deltaEvent.delta
-      }
-      client.emitter.dispatchTypedEvent(
-        "conversationChanged",
-        new ConversationChangedEvent(client.conversation)
-      )
-    },
-    "response.text.delta": (client, event) => {
-      log.error(
-        `${event.type} TODO: Need to handle event to support text streaming.`
-      )
-      // TODO: use these to stream the messages: https://platform.openai.com/docs/api-reference/realtime-server-events/response/text/delta & https://platform.openai.com/docs/api-reference/realtime-server-events/response/audio_transcript/delta
-    },
-    "response.done": (client, event) => {
-      const responseEvent = event as RealtimeServerEventResponseDone
 
-      // https://platform.openai.com/docs/api-reference/realtime-server-events/response/done
-      // for each response content item, find the conversation item patch it up:
-      const response = responseEvent.response
-      if (!response.output) {
-        log.error("No output in response.done")
-        return
-      }
-      for (const output of response.output) {
-        if (output.type != "message") {
-          // function?
-          log.error(`Unexpected output type ${output.type} in response.done`)
-          continue
+        if (!client.sessionRequested) {
+          throw new Error("No session request")
         }
-        if (!output.content) {
-          log.error("No content in output in response.done")
-          continue
+
+        // NOTE: When we create a session with OpenAI, it ignores things like input_audio_transcription?.model !== "whisper-1"; So we update it again if it doesn't match the session.
+        let updatedSession: RealtimeSessionCreateRequest = {
+          ...client.sessionRequested,
         }
-        const conversationItem = findConversationItem(
-          { log },
-          client.conversation,
-          output.id!,
-          event
-        )
-        if (!conversationItem) {
-          // TODO: findConversationItem already logged an error, we should probably pass in a value that tells it not to log
-          // no existing item is there, for some reason maybe we missed it in the stream somehow? We'll just add it:
-          client.conversation.push(output)
-          client.emitter.dispatchTypedEvent(
-            "conversationChanged",
-            new ConversationChangedEvent(client.conversation)
+        let hasSessionMismatch = false
+
+        for (const key of Object.keys(client.sessionRequested) as Array<
+          keyof RealtimeSessionCreateRequest
+        >) {
+          const requestValue = client.sessionRequested[key]
+          const sessionValue = sessionEvent.session[key]
+
+          if (compareValuesIgnoreNullProperties(requestValue, sessionValue)) {
+            continue
+          }
+          log.debug(
+            `session mismatch on ${key}: %o !== %o`,
+            requestValue,
+            sessionValue
           )
-          continue
+          hasSessionMismatch = true
         }
-        // TODO: we probably need to handle this better. Probably we need to overwrite the existing item with this new one since it is now "done".
-        // patch up the conversation item with the provided output:
-        if (!conversationItem.content) {
-          conversationItem.content = []
+        if (hasSessionMismatch) {
+          const updateSessionEvent: RealtimeClientEventSessionUpdate = {
+            type: "session.update",
+            session: updatedSession,
+          }
+          client.sendClientEvent(updateSessionEvent)
         }
-        for (const outputItem of output.content) {
-          conversationItem.content.push(outputItem)
-        }
-        // force update the conversation state:
+      },
+      "session.updated": (client, event) => {
+        const sessionEvent = event as RealtimeServerEventSessionUpdated
+        client.session = sessionEvent.session
+        client.emitter.dispatchTypedEvent(
+          "sessionUpdated",
+          new SessionUpdatedEvent(sessionEvent.session)
+        )
+      },
+      "conversation.item.created": (client, event) => {
+        const conversationEvent =
+          event as RealtimeServerEventConversationItemCreated
+        client.conversation.push(conversationEvent.item)
         client.emitter.dispatchTypedEvent(
           "conversationChanged",
           new ConversationChangedEvent(client.conversation)
         )
-      }
-    },
-    "response.audio_transcript.done": (client, event) => {
-      patchConversationItemWithCompletedTranscript(
-        { log },
-        client.conversation,
-        event as RealtimeServerEventResponseAudioTranscriptDone
-      )
-      client.emitter.dispatchTypedEvent(
-        "conversationChanged",
-        new ConversationChangedEvent(client.conversation)
-      )
-    },
-    "conversation.item.input_audio_transcription.completed": (
-      client,
-      event
-    ) => {
-      patchConversationItemWithCompletedTranscript(
-        { log },
-        client.conversation,
-        event as RealtimeServerEventResponseAudioTranscriptDone
-      )
-      client.emitter.dispatchTypedEvent(
-        "conversationChanged",
-        new ConversationChangedEvent(client.conversation)
-      )
-    },
-  }
+      },
+      "response.audio_transcript.delta": (client, event) => {
+        const deltaEvent =
+          event as RealtimeServerEventResponseAudioTranscriptDelta
+        const { foundContent, foundItem } = findConversationItemContent(
+          { log },
+          client.conversation,
+          deltaEvent.item_id,
+          deltaEvent.content_index,
+          deltaEvent
+        )
+        if (!foundItem) {
+          // error was logged in findConversationItemContent
+          return
+        }
+        if (!foundContent) {
+          if (!foundItem.content) {
+            foundItem.content = []
+          }
+          foundItem.content.push({
+            type: "input_audio",
+            transcript: deltaEvent.delta,
+          })
+        } else {
+          if (foundContent.type !== "input_audio") {
+            log.error(
+              `${event.type} Unexpected content type ${foundContent.type} for audio transcript`
+            )
+            return
+          }
+          foundContent.transcript += deltaEvent.delta
+        }
+        client.emitter.dispatchTypedEvent(
+          "conversationChanged",
+          new ConversationChangedEvent(client.conversation)
+        )
+      },
+      "response.text.delta": (client, event) => {
+        // TODO: Need to handle event to support text streaming text events (these are only for the input items where the input itself is text and not audio).
+      },
+      "response.done": (client, event) => {
+        const responseEvent = event as RealtimeServerEventResponseDone
+
+        // https://platform.openai.com/docs/api-reference/realtime-server-events/response/done
+        // for each response content item, find the conversation item patch it up:
+        const response = responseEvent.response
+        if (!response.output) {
+          log.error("No output in response.done")
+          return
+        }
+        for (const output of response.output) {
+          if (output.type != "message") {
+            // function?
+            log.error(`Unexpected output type ${output.type} in response.done`)
+            continue
+          }
+          if (!output.content) {
+            log.error("No content in output in response.done")
+            continue
+          }
+          const conversationItem = findConversationItem(
+            { log },
+            client.conversation,
+            output.id!,
+            event
+          )
+          if (!conversationItem) {
+            // TODO: findConversationItem already logged an error, we should probably pass in a value that tells it not to log
+            // no existing item is there, for some reason maybe we missed it in the stream somehow? We'll just add it:
+            client.conversation.push(output)
+            client.emitter.dispatchTypedEvent(
+              "conversationChanged",
+              new ConversationChangedEvent(client.conversation)
+            )
+            continue
+          }
+          // TODO: we probably need to handle this better. Probably we need to overwrite the existing item with this new one since it is now "done".
+          // patch up the conversation item with the provided output:
+          if (!conversationItem.content) {
+            conversationItem.content = []
+          }
+          for (const outputItem of output.content) {
+            conversationItem.content.push(outputItem)
+          }
+          // force update the conversation state:
+          client.emitter.dispatchTypedEvent(
+            "conversationChanged",
+            new ConversationChangedEvent(client.conversation)
+          )
+        }
+      },
+      "response.audio_transcript.done": (client, event) => {
+        patchConversationItemWithCompletedTranscript(
+          { log },
+          client.conversation,
+          event as RealtimeServerEventResponseAudioTranscriptDone
+        )
+        client.emitter.dispatchTypedEvent(
+          "conversationChanged",
+          new ConversationChangedEvent(client.conversation)
+        )
+      },
+      "conversation.item.input_audio_transcription.completed": (
+        client,
+        event
+      ) => {
+        patchConversationItemWithCompletedTranscript(
+          { log },
+          client.conversation,
+          event
+        )
+        client.emitter.dispatchTypedEvent(
+          "conversationChanged",
+          new ConversationChangedEvent(client.conversation)
+        )
+      },
+    }
 }
 
-type RealtimeClientServerEventHandler = (
+type RealtimeServerEventHandler<
+  TRealtimeServerEventType extends RealtimeServerEvent["type"] = RealtimeServerEvent["type"]
+> = (
   client: RealtimeClient,
-  event: RealtimeServerEvent
+  event: Extract<RealtimeServerEvent, { type: TRealtimeServerEventType }>
 ) => void
+
+type RealtimeServerEventNames = RealtimeServerEvent["type"]
+
+type RealtimeServerEventTypeToHandlerMap = {
+  [K in RealtimeServerEventNames]: RealtimeServerEventHandler<K>
+}
+
+/**
+ * If the two values are objects, and one has a property that is null or
+ * undefined and the other either does not have that property or the
+ * property is null or undefined, then the property will be considered equal.
+ * If the value is not an object, a normal deep-equal operation is done.
+ */
+function compareValuesIgnoreNullProperties(valueA: any, valueB: any): boolean {
+  if (
+    typeof valueA === "object" &&
+    typeof valueB === "object" &&
+    valueA &&
+    valueB
+  ) {
+    for (const key in valueB) {
+      if (valueB[key] == null) {
+        // if session has null/undefined property, ignore it if request doesn't have it or is also null/undefined
+        if (!(key in valueA) || valueA[key] == null) continue
+        return false
+      }
+      if (!compareValuesIgnoreNullProperties(valueA[key], valueB[key]))
+        return false
+    }
+    return true
+  }
+  return isEqual(valueA, valueB)
+}
