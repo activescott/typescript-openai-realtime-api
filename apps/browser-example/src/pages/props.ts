@@ -4,6 +4,4 @@ export interface PageProps {
   onSessionStatusChanged: (
     status: "unavailable" | "stopped" | "recording"
   ) => void
-  events: any[]
-  onServerEvent: (event: any) => void
 }

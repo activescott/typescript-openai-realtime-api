@@ -53,6 +53,9 @@ const RealtimeClientDefaultOptions: RealtimeClientOptions = {
   baseUrl: "https://api.openai.com/v1/realtime",
 }
 
+interface EphemeralApiKeyOptions {
+  sessionRequested: RealtimeSessionCreateRequest
+}
 /**
  * A TypeScript client for the OpenAI Realtime API using WebRTC in the browser.
  */
@@ -79,7 +82,9 @@ export class RealtimeClient {
    */
   constructor(
     private readonly navigator: Navigator,
-    private readonly getRealtimeEphemeralAPIKey: () => Promise<string> | string,
+    private readonly getRealtimeEphemeralAPIKey: (
+      options: EphemeralApiKeyOptions
+    ) => Promise<string> | string,
     private readonly audioElement: HTMLAudioElement,
     private readonly sessionRequested: RealtimeSessionCreateRequest,
     options: Partial<RealtimeClientOptions> = RealtimeClientDefaultOptions
@@ -220,11 +225,16 @@ export class RealtimeClient {
 
     let apiKey: string
     try {
-      apiKey = await this.getRealtimeEphemeralAPIKey()
+      apiKey = await this.getRealtimeEphemeralAPIKey({
+        sessionRequested: this.sessionRequested,
+      })
     } catch (err) {
       throw new Error("getRealtimeEphemeralAPIKey handler failed.", {
         cause: err,
       })
+    }
+    if (!apiKey) {
+      throw new Error("getRealtimeEphemeralAPIKey did not return an API key.")
     }
 
     const sdpResponse = await fetch(`${this.baseUrl}?model=${this.model}`, {
@@ -360,7 +370,6 @@ export class RealtimeClient {
     return new Blob(this.audioChunks, { type: "audio/webm" })
   }
 
-  // TODO: make these events provide typed events to each handler (should be able to use TS types to do that).
   private static privateServerEventHandlers: Partial<RealtimeServerEventTypeToHandlerMap> =
     {
       error: (_, event) => {
