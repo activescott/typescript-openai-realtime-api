@@ -3,7 +3,7 @@ import type {
   RealtimeServerEvent,
   RealtimeConversationItem,
   RealtimeSession,
-} from "../types/openai"
+} from "../openai"
 
 // Add this index signature allows the key to be string
 // & {
@@ -19,7 +19,7 @@ type RealtimeClientEventObjects =
   RealtimeClientEventMap[RealtimeClientEventNames]
 
 class BaseEvent<
-  TType extends keyof RealtimeClientEventMap | RealtimeServerEvent["type"]
+  TType extends keyof RealtimeClientEventMap | RealtimeServerEvent["type"],
 > extends Event {
   constructor(public readonly type: TType) {
     super(type)
@@ -27,7 +27,7 @@ class BaseEvent<
 }
 
 export class RealtimeServerEventEvent<
-  T extends RealtimeServerEvent = RealtimeServerEvent
+  T extends RealtimeServerEvent = RealtimeServerEvent,
 > extends BaseEvent<"serverEvent"> {
   constructor(public readonly event: T) {
     super("serverEvent")
@@ -60,7 +60,7 @@ export class SessionCreatedEvent extends BaseEvent<"sessionCreated"> {
 }
 
 export interface EventTargetListener<
-  TEvent extends RealtimeClientEventObjects
+  TEvent extends RealtimeClientEventObjects,
 > {
   (evt: TEvent): void
 }
