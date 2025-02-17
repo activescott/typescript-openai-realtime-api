@@ -36,9 +36,21 @@ export function EventList({ events }: { events: any[] }) {
     }
   }, [events])
 
+  function saveEvents() {
+    const blob = new Blob([JSON.stringify(events, null, 2)], {
+      type: "application/json",
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
+    a.download = `events-${timestamp}.json`
+    a.click()
+  }
+
   return (
     <div className="card my-2">
-      <div className="card-header">
+      <div className="card-header d-flex gap-2">
         <div className="dropdown">
           <button
             type="button"
@@ -48,6 +60,13 @@ export function EventList({ events }: { events: any[] }) {
             onClick={() => setShowFilter(!showFilter)}
           >
             Filter
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => saveEvents()}
+          >
+            Save Events to File
           </button>
           <span className="mx-2">Event Count: {events.length}</span>
 
