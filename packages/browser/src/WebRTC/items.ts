@@ -3,7 +3,7 @@ import type {
   RealtimeConversationItem,
   RealtimeConversationItemContent,
   RealtimeServerEventWithCompletedTranscript,
-} from "../types/openai"
+} from "../openai"
 
 /**
  * Finds the specified item in a conversation.
@@ -19,7 +19,7 @@ export function findConversationItem(
   forEvent: {
     type: string
     event_id: string
-  }
+  },
 ): RealtimeConversationItem | undefined {
   // get conversation item:
   const found = conversation.find((convItem) => {
@@ -27,7 +27,7 @@ export function findConversationItem(
   })
   if (!found) {
     context.log.error(
-      `No conversation item ${item_id} found for event ${forEvent.type} with id ${forEvent.event_id}. Existing conversation searched: ${conversation} (${conversation.length} items)`
+      `No conversation item ${item_id} found for event ${forEvent.type} with id ${forEvent.event_id}. Existing conversation searched: ${conversation} (${conversation.length} items)`,
     )
     return undefined
   }
@@ -50,7 +50,7 @@ export function findConversationItemContent(
   forEvent: {
     type: string
     event_id: string
-  }
+  },
 ): {
   foundItem: RealtimeConversationItem | undefined
   foundContent: RealtimeConversationItemContent | undefined
@@ -59,14 +59,14 @@ export function findConversationItemContent(
     context,
     conversation,
     item_id,
-    forEvent
+    forEvent,
   )
   if (!foundItem) {
     return { foundItem, foundContent: undefined }
   }
   if (!foundItem.content) {
     context.log.error(
-      `Conversation item ${foundItem.id} has no content at index ${content_index}.`
+      `Conversation item ${foundItem.id} has no content at index ${content_index}.`,
     )
     return { foundItem, foundContent: undefined }
   }
@@ -79,7 +79,7 @@ export function findConversationItemContent(
 export function patchConversationItemWithCompletedTranscript(
   context: { log: Logger },
   existingConversation: RealtimeConversationItem[],
-  audioEvent: RealtimeServerEventWithCompletedTranscript
+  audioEvent: RealtimeServerEventWithCompletedTranscript,
 ): void {
   // get conversation item & content:
   const { foundItem, foundContent } = findConversationItemContent(
@@ -87,7 +87,7 @@ export function patchConversationItemWithCompletedTranscript(
     existingConversation,
     audioEvent.item_id,
     audioEvent.content_index,
-    audioEvent
+    audioEvent,
   )
   if (!foundItem) {
     // error was logged in findConversationItemContent
@@ -109,7 +109,7 @@ export function patchConversationItemWithCompletedTranscript(
   if (foundContent.type !== "input_audio") {
     // only this even has a transcript field
     context.log.error(
-      `Unexpected content type ${foundContent.type} for audio transcript`
+      `Unexpected content type ${foundContent.type} for audio transcript`,
     )
     return
   }

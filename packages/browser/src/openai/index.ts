@@ -53,7 +53,8 @@ export type RealtimeServerEventTypeMap = {
 
 export type RealtimeServerEventConversationItemCreated =
   components["schemas"]["RealtimeServerEventConversationItemCreated"]
-
+export type RealtimeServerEventError =
+  components["schemas"]["RealtimeServerEventError"]
 export type RealtimeServerEventSessionCreated =
   components["schemas"]["RealtimeServerEventSessionCreated"]
 export type RealtimeServerEventSessionUpdated =
