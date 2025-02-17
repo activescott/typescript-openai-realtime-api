@@ -23,6 +23,9 @@
       "types": "./dist/WebRTC/index.d.ts",
       "import": "./dist/WebRTC/index.js"
     },
+    "./openai": {
+      "types": "./dist/openai/index.d.ts"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js"
@@ -35,9 +38,11 @@
   },
   "devDependencies": {
     "@tsconfig/node20": "^20.1.4",
+    "@types/lodash-es": "^4.17.12",
     "type-fest": "^4.33.0"
   },
   "dependencies": {
+    "lodash-es": "^4.17.21",
     "typescript-event-target": "^1.1.1"
   }
 }
