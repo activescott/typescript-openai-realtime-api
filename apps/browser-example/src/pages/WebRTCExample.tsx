@@ -94,6 +94,7 @@ export function WebRTCExample({
         stopSession={stopSession}
         sessionStatus={sessionStatus}
         events={events}
+        conversation={conversation}
       />
     </div>
   )

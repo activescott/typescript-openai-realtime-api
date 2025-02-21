@@ -4,16 +4,12 @@ import type {
   RealtimeConversationItem,
   RealtimeConversationItemContent,
 } from "@tsorta/browser/openai"
-import {
-  DefinedRole,
-  RealtimeConversationItemSimple,
-  simplifyItem,
-} from "./simpleConversation"
+import { DefinedRole, simplifyItem } from "./simpleConversation"
 
 const log = console
 
 export interface ConversationProps {
-  conversation: RealtimeConversationItemSimple[]
+  conversation: RealtimeConversationItem[]
 }
 
 export const ConversationView = ({
@@ -93,7 +89,8 @@ const ConversationItem = ({
 
       <div
         key={id}
-        className={`mb-5 p-3 rounded-pill ${RoleBgColorMap[role]} ${RoleTextColorMap[role]}`}
+        className={`mb-5 ${RoleBgColorMap[role]} ${RoleTextColorMap[role]}`}
+        style={{ padding: "1.5rem 1.5rem", borderRadius: "5rem" }}
       >
         <div className="my-content">
           {content.map((contentItem, index) => (
