@@ -2,7 +2,10 @@ import { ReactNode, useState } from "react"
 import { BootstrapIcon } from "./BootstrapIcon"
 import { EventList } from "./EventList"
 import { useModal } from "../hooks/useModal"
-import { RealtimeSessionCreateRequest } from "@tsorta/browser/openai"
+import {
+  RealtimeConversationItem,
+  RealtimeSessionCreateRequest,
+} from "@tsorta/browser/openai"
 import { ConversationView } from "./ConversationView"
 
 type PartialSessionRequestWithModel = Partial<RealtimeSessionCreateRequest> &
@@ -16,6 +19,7 @@ interface RealtimeSessionViewProps {
   stopSession: () => Promise<void>
   sessionStatus: "unavailable" | "stopped" | "recording"
   events: { type: string }[]
+  conversation?: RealtimeConversationItem[]
 }
 
 export function RealtimeSessionView({
@@ -23,12 +27,17 @@ export function RealtimeSessionView({
   stopSession,
   sessionStatus,
   events,
+  conversation,
 }: RealtimeSessionViewProps): ReactNode {
   // TODO: allow user to select the model
   const model = "gpt-4o-realtime-preview-2024-12-17"
 
   const [instructions, setInstructions] = useState<string | undefined>(
     undefined
+  )
+
+  const [activeTab, setActiveTab] = useState<"events" | "conversation">(
+    "events"
   )
 
   const modal = useModal({
@@ -132,31 +141,31 @@ export function RealtimeSessionView({
         </li>
       </ul>
 
-      <ul className="nav nav-tabs mb-3" role="tablist">
+      <ul className="nav nav-tabs mt-3" role="tablist">
         <li className="nav-item" role="presentation">
           <button
-            className="nav-link active"
+            className={`nav-link ${activeTab === "events" ? "active" : ""}`}
             id="events-tab"
-            data-bs-toggle="tab"
-            data-bs-target="#events"
             type="button"
             role="tab"
             aria-controls="events"
-            aria-selected="true"
+            aria-selected={activeTab === "conversation"}
+            onClick={() => setActiveTab("events")}
           >
             Events
           </button>
         </li>
         <li className="nav-item" role="presentation">
           <button
-            className="nav-link"
+            className={`nav-link ${
+              activeTab === "conversation" ? "active" : ""
+            }`}
             id="conversation-tab"
-            data-bs-toggle="tab"
-            data-bs-target="#conversation"
             type="button"
             role="tab"
             aria-controls="conversation"
-            aria-selected="false"
+            aria-selected={activeTab === "conversation"}
+            onClick={() => setActiveTab("conversation")}
           >
             Conversation
           </button>
@@ -164,7 +173,9 @@ export function RealtimeSessionView({
       </ul>
       <div className="tab-content">
         <div
-          className="tab-pane fade show active"
+          className={`tab-events tab-pane fade ${
+            activeTab === "events" ? "show active" : ""
+          }`}
           id="events"
           role="tabpanel"
           aria-labelledby="events-tab"
@@ -172,16 +183,24 @@ export function RealtimeSessionView({
           <EventList events={events} />
         </div>
         <div
-          className="tab-pane fade"
+          className={`tab-events tab-pane fade ${
+            activeTab === "conversation" ? "show active" : ""
+          }`}
           id="conversation"
           role="tabpanel"
           aria-labelledby="conversation-tab"
         >
-          <div>TODO</div>
-          {/*<ConversationView conversation={} />*/}
+          {conversation && conversation.length > 0 ? (
+            <ConversationView conversation={conversation} />
+          ) : (
+            <div className="alert alert-info m-2" role="alert">
+              {conversation !== undefined
+                ? "Conversation data not yet available. Start a session and talk and they should appear."
+                : "Conversations not available in this SDK"}
+            </div>
+          )}
         </div>
       </div>
-      <EventList events={events} />
     </div>
   )
 }
