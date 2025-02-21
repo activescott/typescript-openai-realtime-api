@@ -3,6 +3,7 @@ import { BootstrapIcon } from "./BootstrapIcon"
 import { EventList } from "./EventList"
 import { useModal } from "../hooks/useModal"
 import { RealtimeSessionCreateRequest } from "@tsorta/browser/openai"
+import { ConversationView } from "./ConversationView"
 
 type PartialSessionRequestWithModel = Partial<RealtimeSessionCreateRequest> &
   Pick<Required<RealtimeSessionCreateRequest>, "model">
@@ -131,7 +132,55 @@ export function RealtimeSessionView({
         </li>
       </ul>
 
-      <h2>Events:</h2>
+      <ul className="nav nav-tabs mb-3" role="tablist">
+        <li className="nav-item" role="presentation">
+          <button
+            className="nav-link active"
+            id="events-tab"
+            data-bs-toggle="tab"
+            data-bs-target="#events"
+            type="button"
+            role="tab"
+            aria-controls="events"
+            aria-selected="true"
+          >
+            Events
+          </button>
+        </li>
+        <li className="nav-item" role="presentation">
+          <button
+            className="nav-link"
+            id="conversation-tab"
+            data-bs-toggle="tab"
+            data-bs-target="#conversation"
+            type="button"
+            role="tab"
+            aria-controls="conversation"
+            aria-selected="false"
+          >
+            Conversation
+          </button>
+        </li>
+      </ul>
+      <div className="tab-content">
+        <div
+          className="tab-pane fade show active"
+          id="events"
+          role="tabpanel"
+          aria-labelledby="events-tab"
+        >
+          <EventList events={events} />
+        </div>
+        <div
+          className="tab-pane fade"
+          id="conversation"
+          role="tabpanel"
+          aria-labelledby="conversation-tab"
+        >
+          <div>TODO</div>
+          {/*<ConversationView conversation={} />*/}
+        </div>
+      </div>
       <EventList events={events} />
     </div>
   )
