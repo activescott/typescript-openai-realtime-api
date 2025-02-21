@@ -11,6 +11,9 @@ type DefinedRealtimeConversationItemType = NonNullable<
   RealtimeConversationItem["type"]
 >
 
+/**
+ * A simplified form of @see RealtimeConversationItem for rendering.
+ */
 export type RealtimeConversationItemSimple = Pick<
   RealtimeConversationItem,
   "id"
@@ -20,6 +23,9 @@ export type RealtimeConversationItemSimple = Pick<
   content: RealtimeConversationItemContent[]
 }
 
+/**
+ * Simplifies the @see RealtimeConversationItem for rendering purposes. Mostly removes the possibility of `undefined` values in places where they are unlikely (impossible) at render time.
+ */
 export function simplifyItem(
   item: RealtimeConversationItem
 ): RealtimeConversationItemSimple {
