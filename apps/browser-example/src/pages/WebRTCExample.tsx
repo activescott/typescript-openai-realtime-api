@@ -5,6 +5,7 @@ import {
 } from "../components/RealtimeSessionView"
 import { RealtimeClient } from "@tsorta/browser/WebRTC"
 import { PageProps } from "./props"
+import { RealtimeConversationItem } from "@tsorta/browser/openai"
 
 export function WebRTCExample({
   apiKey,
@@ -15,6 +16,9 @@ export function WebRTCExample({
 
   const [client, setClient] = useState<RealtimeClient | undefined>(undefined)
   const [events, setEvents] = useState<any[]>([])
+  const [conversation, setConversation] = useState<RealtimeConversationItem[]>(
+    []
+  )
 
   const startSession = useCallback(
     async function startSession({
@@ -52,6 +56,11 @@ export function WebRTCExample({
         setEvents((events) => [...events, event.event])
       })
 
+      client.addEventListener("conversationChanged", (event) => {
+        console.debug("conversationChanged event:", event.conversation)
+        setConversation(event.conversation)
+      })
+
       await client.start()
 
       onSessionStatusChanged("recording")
@@ -79,6 +88,7 @@ export function WebRTCExample({
         by Scott Willeke.
       </p>
       <audio ref={audioElementRef}></audio>
+
       <RealtimeSessionView
         startSession={startSession}
         stopSession={stopSession}
