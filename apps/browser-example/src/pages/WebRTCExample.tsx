@@ -48,7 +48,8 @@ export function WebRTCExample({
       setClient(client)
 
       client.addEventListener("serverEvent", (event) => {
-        setEvents((events) => [...events, event])
+        console.debug("serverEvent event:", event)
+        setEvents((events) => [...events, event.event])
       })
 
       await client.start()
