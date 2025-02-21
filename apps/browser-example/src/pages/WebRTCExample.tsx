@@ -52,12 +52,10 @@ export function WebRTCExample({
       setClient(client)
 
       client.addEventListener("serverEvent", (event) => {
-        console.debug("serverEvent event:", event)
         setEvents((events) => [...events, event.event])
       })
 
       client.addEventListener("conversationChanged", (event) => {
-        console.debug("conversationChanged event:", event.conversation)
         setConversation(event.conversation)
       })
 
