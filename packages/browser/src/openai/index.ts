@@ -96,6 +96,9 @@ export type RealtimeSession = components["schemas"]["RealtimeSession"]
 export type RealtimeSessionCreateRequest =
   components["schemas"]["RealtimeSessionCreateRequest"]
 
+export type RealtimeSessionCreateResponse =
+  components["schemas"]["RealtimeSessionCreateResponse"]
+
 export type RealTimeSessionModels = RealtimeSessionCreateRequest["model"]
 
 /** Part of the @see RealtimeServerEventResponseDone event and others.

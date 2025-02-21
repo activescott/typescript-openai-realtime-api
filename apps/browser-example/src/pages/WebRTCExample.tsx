@@ -5,7 +5,10 @@ import {
 } from "../components/RealtimeSessionView"
 import { RealtimeClient } from "@tsorta/browser/WebRTC"
 import { PageProps } from "./props"
-import { RealtimeConversationItem } from "@tsorta/browser/openai"
+import {
+  RealtimeConversationItem,
+  RealtimeSessionCreateResponse,
+} from "@tsorta/browser/openai"
 
 export function WebRTCExample({
   apiKey,
@@ -37,17 +40,25 @@ export function WebRTCExample({
 
       const client = new RealtimeClient(
         navigator,
-        // @ts-expect-error TS6133: 'sessionRequested' is declared but its value is never read.
-        ({ sessionRequested }) => {
+        async () => {
           // NOTE: For the sake of the example, we're using a "real" OpenAI API
-          //   key rather than a Realtime API Session ephemeral key, as you
-          //   should do in a production app. So this sessionRequested argument
-          //   isn't useful in the example, but in a production app you can use
-          //   it to request a session with the these parameters.
-          return apiKey
+          //   key in *the browser*. **DO NOT DO THIS**. You should make this request
+          //   for the ephemeral key on a backend server where you can protect
+          //   the key.
+
+          const r = await fetch("https://api.openai.com/v1/realtime/sessions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(sessionRequest),
+          })
+          const data = (await r.json()) as RealtimeSessionCreateResponse
+
+          return data.client_secret.value
         },
-        audioElementRef.current,
-        sessionRequest
+        audioElementRef.current
       )
       setClient(client)
 
@@ -59,7 +70,13 @@ export function WebRTCExample({
         setConversation(event.conversation)
       })
 
-      await client.start()
+      try {
+        await client.start()
+      } catch (e) {
+        // TODO: put an alert on the top to show error
+        console.error("Error starting session", e)
+        return
+      }
 
       onSessionStatusChanged("recording")
     },

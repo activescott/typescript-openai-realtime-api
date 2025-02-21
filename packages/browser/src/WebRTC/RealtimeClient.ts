@@ -53,9 +53,6 @@ const RealtimeClientDefaultOptions: RealtimeClientOptions = {
   baseUrl: "https://api.openai.com/v1/realtime",
 }
 
-interface EphemeralApiKeyOptions {
-  sessionRequested: RealtimeSessionCreateRequest
-}
 /**
  * A TypeScript client for the OpenAI Realtime API using WebRTC in the browser.
  */
@@ -78,16 +75,12 @@ export class RealtimeClient {
   /**
    * Create a new client.
    * @param getRealtimeEphemeralAPIKey This is a function that you should implement to return the Ephemeral OpenAI API key that is used to authenticate with the OpenAI Realtime API. It should be an ephemeral key as described at https://platform.openai.com/docs/guides/realtime-webrtc#creating-an-ephemeral-token. You will probably need to make a call to your server here to fetch the key.
-   * @param sessionRequested The session parameters you want from the Realtime API. If these are found to be different it will re-request them to try to match this session.
    */
   constructor(
     private readonly navigator: Navigator,
-    private readonly getRealtimeEphemeralAPIKey: (
-      options: EphemeralApiKeyOptions
-    ) => Promise<string> | string,
+    private readonly getRealtimeEphemeralAPIKey: () => Promise<string> | string,
     private readonly audioElement: HTMLAudioElement,
-    private readonly sessionRequested: RealtimeSessionCreateRequest,
-    options: Partial<RealtimeClientOptions> = RealtimeClientDefaultOptions
+    options: Partial<RealtimeClientOptions> = RealtimeClientDefaultOptions,
   ) {
     const opt = { ...RealtimeClientDefaultOptions, ...options }
     this.recordedAudioChunkDuration = opt.recordedAudioChunkDuration
@@ -101,7 +94,7 @@ export class RealtimeClient {
    */
   public addEventListener<TEventName extends keyof RealtimeClientEventMap>(
     event: TEventName,
-    listener: EventTargetListener<RealtimeClientEventMap[TEventName]>
+    listener: EventTargetListener<RealtimeClientEventMap[TEventName]>,
   ): void {
     this.emitter.addEventListener(event, listener)
   }
@@ -204,7 +197,7 @@ export class RealtimeClient {
     this.audioChunks.push(...audioChunks)
     this.emitter.dispatchTypedEvent(
       "recordedAudioChanged",
-      new RecordedAudioChangedEvent(this.audioChunks)
+      new RecordedAudioChangedEvent(this.audioChunks),
     )
   }
 
@@ -212,7 +205,7 @@ export class RealtimeClient {
     this.audioChunks = audioChunks
     this.emitter.dispatchTypedEvent(
       "recordedAudioChanged",
-      new RecordedAudioChangedEvent(this.audioChunks)
+      new RecordedAudioChangedEvent(this.audioChunks),
     )
   }
 
@@ -225,9 +218,7 @@ export class RealtimeClient {
 
     let apiKey: string
     try {
-      apiKey = await this.getRealtimeEphemeralAPIKey({
-        sessionRequested: this.sessionRequested,
-      })
+      apiKey = await this.getRealtimeEphemeralAPIKey()
     } catch (err) {
       throw new Error("getRealtimeEphemeralAPIKey handler failed.", {
         cause: err,
@@ -274,7 +265,7 @@ export class RealtimeClient {
     // Listen for server-sent events on the data channel
     this.dataChannel.addEventListener(
       "message",
-      this.receiveServerMessage.bind(this)
+      this.receiveServerMessage.bind(this),
     )
     this.dataChannel.addEventListener("error", (e) => {
       log.error("Data channel error from server: %o", e.error)
@@ -308,7 +299,7 @@ export class RealtimeClient {
       this.session = undefined
       this.emitter.dispatchTypedEvent(
         "sessionUpdated",
-        new SessionUpdatedEvent(this.session)
+        new SessionUpdatedEvent(this.session),
       )
     }
   }
@@ -323,7 +314,7 @@ export class RealtimeClient {
 
     this.emitter.dispatchTypedEvent(
       "serverEvent",
-      new RealtimeServerEventEvent(parsedEvent)
+      new RealtimeServerEventEvent(parsedEvent),
     )
   }
 
@@ -383,49 +374,15 @@ export class RealtimeClient {
         client.session = sessionEvent.session
         client.emitter.dispatchTypedEvent(
           "sessionCreated",
-          new SessionCreatedEvent(sessionEvent.session)
+          new SessionCreatedEvent(sessionEvent.session),
         )
-
-        if (!client.sessionRequested) {
-          throw new Error("No session request")
-        }
-
-        // NOTE: When we create a session with OpenAI, it ignores things like input_audio_transcription?.model !== "whisper-1"; So we update it again if it doesn't match the session.
-        let updatedSession: RealtimeSessionCreateRequest = {
-          ...client.sessionRequested,
-        }
-        let hasSessionMismatch = false
-
-        for (const key of Object.keys(client.sessionRequested) as Array<
-          keyof RealtimeSessionCreateRequest
-        >) {
-          const requestValue = client.sessionRequested[key]
-          const sessionValue = sessionEvent.session[key]
-
-          if (compareValuesIgnoreNullProperties(requestValue, sessionValue)) {
-            continue
-          }
-          log.debug(
-            `session mismatch on ${key}: %o !== %o`,
-            requestValue,
-            sessionValue
-          )
-          hasSessionMismatch = true
-        }
-        if (hasSessionMismatch) {
-          const updateSessionEvent: RealtimeClientEventSessionUpdate = {
-            type: "session.update",
-            session: updatedSession,
-          }
-          client.sendClientEvent(updateSessionEvent)
-        }
       },
       "session.updated": (client, event) => {
         const sessionEvent = event as RealtimeServerEventSessionUpdated
         client.session = sessionEvent.session
         client.emitter.dispatchTypedEvent(
           "sessionUpdated",
-          new SessionUpdatedEvent(sessionEvent.session)
+          new SessionUpdatedEvent(sessionEvent.session),
         )
       },
       "conversation.item.created": (client, event) => {
@@ -434,7 +391,7 @@ export class RealtimeClient {
         client.conversation.push(conversationEvent.item)
         client.emitter.dispatchTypedEvent(
           "conversationChanged",
-          new ConversationChangedEvent(client.conversation)
+          new ConversationChangedEvent(client.conversation),
         )
       },
       "response.audio_transcript.delta": (client, event) => {
@@ -445,7 +402,7 @@ export class RealtimeClient {
           client.conversation,
           deltaEvent.item_id,
           deltaEvent.content_index,
-          deltaEvent
+          deltaEvent,
         )
         if (!foundItem) {
           // error was logged in findConversationItemContent
@@ -462,7 +419,7 @@ export class RealtimeClient {
         } else {
           if (foundContent.type !== "input_audio") {
             log.error(
-              `${event.type} Unexpected content type ${foundContent.type} for audio transcript`
+              `${event.type} Unexpected content type ${foundContent.type} for audio transcript`,
             )
             return
           }
@@ -470,7 +427,7 @@ export class RealtimeClient {
         }
         client.emitter.dispatchTypedEvent(
           "conversationChanged",
-          new ConversationChangedEvent(client.conversation)
+          new ConversationChangedEvent(client.conversation),
         )
       },
       "response.text.delta": (client, event) => {
@@ -500,7 +457,7 @@ export class RealtimeClient {
             { log },
             client.conversation,
             output.id!,
-            event
+            event,
           )
           if (!conversationItem) {
             // TODO: findConversationItem already logged an error, we should probably pass in a value that tells it not to log
@@ -508,7 +465,7 @@ export class RealtimeClient {
             client.conversation.push(output)
             client.emitter.dispatchTypedEvent(
               "conversationChanged",
-              new ConversationChangedEvent(client.conversation)
+              new ConversationChangedEvent(client.conversation),
             )
             continue
           }
@@ -523,7 +480,7 @@ export class RealtimeClient {
           // force update the conversation state:
           client.emitter.dispatchTypedEvent(
             "conversationChanged",
-            new ConversationChangedEvent(client.conversation)
+            new ConversationChangedEvent(client.conversation),
           )
         }
       },
@@ -531,35 +488,36 @@ export class RealtimeClient {
         patchConversationItemWithCompletedTranscript(
           { log },
           client.conversation,
-          event as RealtimeServerEventResponseAudioTranscriptDone
+          event as RealtimeServerEventResponseAudioTranscriptDone,
         )
         client.emitter.dispatchTypedEvent(
           "conversationChanged",
-          new ConversationChangedEvent(client.conversation)
+          new ConversationChangedEvent(client.conversation),
         )
       },
       "conversation.item.input_audio_transcription.completed": (
         client,
-        event
+        event,
       ) => {
         patchConversationItemWithCompletedTranscript(
           { log },
           client.conversation,
-          event
+          event,
         )
         client.emitter.dispatchTypedEvent(
           "conversationChanged",
-          new ConversationChangedEvent(client.conversation)
+          new ConversationChangedEvent(client.conversation),
         )
       },
     }
 }
 
 type RealtimeServerEventHandler<
-  TRealtimeServerEventType extends RealtimeServerEvent["type"] = RealtimeServerEvent["type"]
+  TRealtimeServerEventType extends
+    RealtimeServerEvent["type"] = RealtimeServerEvent["type"],
 > = (
   client: RealtimeClient,
-  event: Extract<RealtimeServerEvent, { type: TRealtimeServerEventType }>
+  event: Extract<RealtimeServerEvent, { type: TRealtimeServerEventType }>,
 ) => void
 
 type RealtimeServerEventNames = RealtimeServerEvent["type"]
