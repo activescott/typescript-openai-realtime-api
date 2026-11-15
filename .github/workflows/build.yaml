@@ -58,5 +58,5 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       # https://github.com/actions/deploy-pages & https://github.com/actions/starter-workflows/blob/main/pages/static.yml
-      - uses: actions/deploy-pages@v4
+      - uses: actions/deploy-pages@v5
         id: deployment
