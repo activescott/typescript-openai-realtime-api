@@ -37,7 +37,7 @@
     "clean": "rm -rf dist; rm tsconfig.tsbuildinfo; rm -rf node_modules"
   },
   "devDependencies": {
-    "@tsconfig/node20": "^20.1.4",
+    "@tsconfig/node22": "^22.0.0",
     "@types/lodash-es": "^4.17.12",
     "type-fest": "^4.33.0"
   },
